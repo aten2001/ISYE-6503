@@ -172,7 +172,7 @@ model=NULL
 # create a vector of the dataframe column names used to build the formula
 
 vars = names(crime)
-# remove the response variable (it's in the 15th column)
+# remove the response variable (it's in the 16th column)
 vars = vars[-16]
 
 # the combn function will run every different combination of variables and then run the lm
