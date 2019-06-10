@@ -224,7 +224,44 @@ data.table(model1=0.7078,model18494=0.7444,model5817=0.7307)
 crimerate=-6426.10+93.32*14.0+180.12*10.0+102.65*12.0+ 22.34*94.0-6086.63*0.120+187.35*3.6+61.33*20.1-3796.03*0.04 
 crimerate
 
+testpoint<-data.frame(M = 14.0,
+                      So = 0,
+                      Ed = 10.0,
+                      Po1 = 12.0,
+                      Po2 = 15.5,
+                      LF = 0.640,
+                      M.F = 94.0,
+                      Pop = 150,
+                      NW = 1.1,
+                      U1 = 0.120,
+                      U2 = 3.6,
+                      Wealth = 3200,
+                      Ineq = 20.1,
+                      Prob = 0.04,
+                      Time = 39.0)
+preditc<-predict(model[[18494]],testpoint)
 
+#perfrom 4-fold cross validation with the linear models that was choosen;
+qqnorm(crime$Crime)
+set.seed(1234)
+lm1<-cv.lm(crime,model1,m=4)
+lml18494<-cv.lm(crime,model[[18494]],m=4)
+
+# We can calculate the R-squared values directly.
+# R-squared = 1 - SSEresiduals/SSEtotal
+#
+# total sum of squared differences between data and its mean
+
+SStot <- sum((crime$Crime - mean(crime$Crime))^2)
+SStot
+
+# for model, model2, and cross-validation, calculated SEres
+
+SSres_model <- sum(model$residuals^2)
+
+SSres_model2 <- sum(model2$residuals^2)
+
+SSres_c <- attr(c,"ms")*nrow(dat) # mean squared error, times number of data points, gives sum of squared errors
 
 
 
