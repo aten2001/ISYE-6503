@@ -1,0 +1,195 @@
+library(nnet)
+library(MASS)
+library(kknn)
+cancer<- read.table("http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data",sep = ",", stringsAsFactors = FALSE, header=F)
+head(cancer)
+
+#check for the missings
+str(cancer)
+#We noticed that V1-V11 are all integer values, except V7 has missing data, marked as "?"
+
+#check how many data are missing in V7
+mis<-subset(cancer,cancer$V7=="?")
+nrow(mis)
+# 16 obs were missing, which account for 16/699=2.29% of the total data. We can go ahead and impute values for the missings.
+
+#1. Use the mean/mode imputation method to impute values for the missing data.
+#Find the mode value
+v1<-nrow(subset(cancer,cancer$V7==1))
+v2<-nrow(subset(cancer,cancer$V7==2))
+v3<-nrow(subset(cancer,cancer$V7==3))
+v4<-nrow(subset(cancer,cancer$V7==4))
+v5<-nrow(subset(cancer,cancer$V7==5))
+v6<-nrow(subset(cancer,cancer$V7==6))
+v7<-nrow(subset(cancer,cancer$V7==7))
+v8<-nrow(subset(cancer,cancer$V7==8))
+v9<-nrow(subset(cancer,cancer$V7==9))
+v10<-nrow(subset(cancer,cancer$V7==10))
+v<-c( v1 , v2 , v3 , v4  , v5 ,  v6 , v7 , v8 , v9 , v10 )
+
+mode<-which.max(v)
+mode
+# 1 is the mode
+
+#Assign mode value to the missings
+cancer1<-cancer
+cancer1$V7[cancer1$V7=="?"]<-mode
+sum(cancer1$V7=="?")#We have sucessfully changed "?" to 1
+cancer1$V7<-as.integer(cancer1$V7)
+str(cancer1$V7)
+#2. Use regression to impute values for the missing data.
+#Leave out the response variables and V1 which is ID, and use stepwise method to predict the V7 with all the other variables
+cancer2<-cancer[cancer$V7!="?",2:10]
+cancer2$V7 <- as.integer(cancer2$V7)
+
+# 70% for training 
+mask_train<-sample(nrow(cancer2), size = floor(nrow(cancer2) * 0.7))
+# training data set
+train<-cancer2[mask_train,] 
+
+# Using the remaining data for test
+test<-cancer2[-mask_train, ]  # all rows except training
+
+#Fit the model
+reg<- multinom(V7 ~ ., data = train)
+summary(reg)
+
+#Use stepwise method to re-fit the model with all the predictors
+stp<-stepAIC(reg, direction="both")
+stp$anova
+summary(stp)
+
+# Generate the model from stepwise method
+model<- lm(V7~V2+V4+V5+V8, cancer2)
+summary(model)
+
+#Use test dataset to validate
+pred<-round(predict(model,test))
+acc<-sum(pred == test$V7) / nrow(test)
+acc
+#0.356 accuracy rate is not good.But this is the only model we got, so I will go ahead and use this model to impute the missings
+
+#Get the subset of the data with the missings, and the subset with all the valid data points
+mis2<-subset(cancer,V7=="?")
+ok<-subset(cancer,V7!="?")
+
+#Assign the imputed values to V7
+mis2$V7<-round(predict(model,mis2))
+
+#Put these data back to the cancer dataset
+cancer2final<-rbind(ok,mis2)
+cancer2final$V7<-as.integer(cancer2final$V7)
+
+#make the values outside of the orignal range back to [1,10]
+cancer2final$V7[cancer2final$V7 > 10] <- 10
+cancer2final$V7[cancer2final$V7 < 1] <- 1
+
+#3. Use regression with perturbation to impute values for the missing data.
+set.seed(123)
+
+v7<-round(predict(model,mis2))
+
+mis3<-subset(cancer,V7=="?")
+
+v7new<-round(rnorm(nrow(mis3),v7,sd(v7)))
+
+#make the values outside of the orignal range back to [1,10]
+mis3$V7<-v7new
+
+mis3$V7[mis3$V7 > 10] <- 10
+mis3$V7[mis3$V7 < 1] <- 1
+
+cancer3<-rbind(ok,mis3)
+cancer3$V7<-as.integer(cancer3$V7)
+
+#4.Compare the results and quality of classification models (e.g., SVM, KNN) build using
+#  (1) the data sets from questions 1,2,3; 
+# 70% for training 
+mask_train1<-sample(nrow(cancer1), size = floor(nrow(cancer1) * 0.7))
+
+#4.1.1, with mode imputation
+acc<-rep(0,25)
+
+# training data set
+train1<-cancer1[mask_train1,] 
+# Using the remaining data for test
+test1<-cancer1[-mask_train1, ]  
+
+for (k in 1:5){
+knn4.1.1 <- kknn(V11~V2+V3+ V4+ V5+ V6+ V7+ V8+ V9+ V10,train1,test1,k=k)
+pred1 <- as.integer(fitted(knn4.1.1)+0.5)
+acc[k]<-sum(pred1 == test1$V11) / nrow(test1)
+}
+
+#4.1.2, with regression imputation
+train2<-cancer2final[mask_train1,] 
+test2<-cancer2final[-mask_train1, ]  
+
+for (k in 1:5){
+        knn4.1.2 <- kknn(V11~V2+V3+ V4+ V5+ V6+ V7+ V8+ V9+ V10,train2,test2,k=k)
+        pred2 <- as.integer(fitted(knn4.1.2)+0.5)
+        acc[k+5]<-sum(pred2 == test2$V11) / nrow(test2)
+}
+
+#4.1.3, with regression imputation
+train3<-cancer3[mask_train1,] 
+test3<-cancer3[-mask_train1, ]  
+
+for (k in 1:5){
+        knn4.1.3 <- kknn(V11~V2+V3+ V4+ V5+ V6+ V7+ V8+ V9+ V10,train3,test3,k=k)
+        pred3<- as.integer(fitted(knn4.1.3)+0.5)
+        acc[k+10]<-sum(pred3 == test3$V11) / nrow(test3)
+}
+
+#4.2, the data that remains after data points with missing values are removed; 
+cancer4<-subset(cancer,V7!="?")
+cancer4$V7<-as.integer(cancer4$V7)
+train4<-cancer4[mask_train1,] 
+test4<-cancer4[-mask_train1, ]  
+
+for (k in 1:5){
+        knn4.2 <- kknn(V11~V2+V3+ V4+ V5+ V6+ V7+ V8+ V9+ V10,train4,test4,k=k)
+        pred4<- as.integer(fitted(knn4.2)+0.5)
+        acc[k+15]<-sum(pred4 == test4$V11) / nrow(test4)
+}
+
+#4.3,  the data set when a binary variable is introduced to indicate missing values
+#Add a binary variable to the original data to indicate if V7 is missing or not. 0=missing,1= not missing
+cancer5 <- cancer
+cancer5$V12[cancer5$V7 == "?"] <- 0
+cancer5$V12[cancer5$V7 != "?"] <- 1
+
+# Create interaction factor for V7 and V12.
+cancer5$V13[cancer5$V7 == "?"] <- 0
+cancer5$V13[cancer5$V7 != "?"] <- as.integer(ok$V7)
+
+train5<-cancer5[mask_train1,] 
+test5<-cancer5[-mask_train1, ]  
+
+# Use the interaction factor in the modeling.
+for (k in 1:5){
+        knn4.3 <- kknn(V11~V2+V3+ V4+ V5+ V6+ V8+ V9+ V10+V13,train5,test5,k=k)
+        pred5<- as.integer(fitted(knn4.3)+0.5)
+        acc[k+20]<-sum(pred5 == test5$V11) / nrow(test5)
+}
+
+acc
+
+plot(acc)
+which.max(acc)
+
+#There isn't much differences between the differenct methods to deal with the missing data (the accuracy rate are all withn 90%-95%).
+#However, removing the missing values, generated a slightly higher predictive accuracy at k=1, for the knn model.
+
+#Question 15.1
+#Describe a situation or problem from your job, everyday life, current events, etc., for which optimization
+#would be appropriate. What data would you need? 
+
+#Graduate students may want to decide which courses to choose in each semester, in order to maximize the GPA when graduating.
+#Data needed: 
+#Workload of each courses and the time needed per week
+#Personal schedules and estimated time that can be used for study
+#Study plan that indicates which courses must be taken (based on school requirment, personal interest, and career goal)
+#The order of the coursers (take introduction courses before the ones that require deeper understanding )
+#Total credits taken each semester should meet school requirement
+#The amount paid should within the education budget.
